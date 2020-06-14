@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io/ioutil"
 	"log"
 	"os"
 	"strings"
@@ -34,19 +35,16 @@ func getInputFile(args []string) string {
 
 // Read file and return URLs within
 func readFile(file string) []string {
-	f, err := os.Open(file)
+	var content []byte
+	content, err := ioutil.ReadFile(file)
 	if err != nil {
 		log.Fatal(err)
 	}
-	var content []byte
-	for {
-		buf := make([]byte, 8)
-		if _, err := f.Read(buf); err != nil {
-			break
-		} else {
-			content = append(content, buf...)
-		}
-	}
 	urls := strings.Split((string(content)), "\n")
+
+	// In POSIX files, splitting by '\n' creates and empty item
+	if urls[len(urls)-1] == "" {
+		return (urls[:len(urls)-1])
+	}
 	return urls
 }
