@@ -1,5 +1,7 @@
 https://google.com
 https://golang.org
+https://golangg.org
 https://amazon.com
 https://amazon.co.uk
+https://twitter.com
 https://bbc.co.uk

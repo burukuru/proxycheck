@@ -4,23 +4,65 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"net/http"
 	"os"
 	"strings"
+	"time"
 )
 
 /*
 TODO:
-- print out http_proxy and no_prox\
-- check urls
-  - use timeouts
-- print summary of unresponsive urls
-- exit 0 if all responded, exit 1 if any did not respond
+- print out http_proxy and no_proxy
 */
+type urlStatus struct {
+	URL        string `json: url`
+	StatusCode int    `json: statusCode`
+	GetError   error  `json: getError`
+}
 
 func main() {
 	file := getInputFile(os.Args)
 	urls := readFile(file)
-	fmt.Println(urls)
+	results := checkUrls(urls)
+	error_count := printResults(results)
+	if error_count > 0 {
+		os.Exit(1)
+	}
+}
+
+func printResults(results []urlStatus) int {
+	_, error_count := Summary(results)
+	for _, u := range results {
+		if u.GetError != nil {
+			u.String()
+		}
+	}
+	return error_count
+}
+
+func (u *urlStatus) String() {
+	if u.GetError != nil {
+		fmt.Printf("Failed to get %v (%v): %v\n", u.URL, u.StatusCode, u.GetError)
+	} else {
+		fmt.Printf("Successful response from %v (%v).\n", u.URL, u.StatusCode)
+	}
+}
+
+func Summary(r []urlStatus) (int, int) {
+	error_count := 0
+	success_count := 0
+	for _, u := range r {
+		if u.GetError != nil {
+			error_count = error_count + 1
+		} else {
+			success_count = success_count + 1
+		}
+	}
+	fmt.Printf("\nSummary:\n")
+	fmt.Printf("Success: %v\n", success_count)
+	fmt.Printf("Error:   %v\n", error_count)
+
+	return success_count, error_count
 }
 
 // Check arguments and return input file
@@ -47,4 +89,32 @@ func readFile(file string) []string {
 		return (urls[:len(urls)-1])
 	}
 	return urls
+}
+
+func checkUrls(urls []string) []urlStatus {
+	msgs := make(chan urlStatus)
+	for _, url := range urls {
+		go checkUrl(url, msgs)
+	}
+	var results []urlStatus
+	for i := 0; i < len(urls); i++ {
+		results = append(results, <-msgs)
+	}
+
+	return results
+}
+
+func checkUrl(url string, msgs chan urlStatus) {
+	client := http.Client{
+		Timeout: 5 * time.Second,
+	}
+	res, err := client.Get(url)
+	if err != nil {
+		fmt.Println(url + " F")
+		msgs <- urlStatus{url, 0, err}
+
+		return
+	}
+	fmt.Printf("%v S (%v)\n", url, res.StatusCode)
+	msgs <- urlStatus{url, res.StatusCode, nil}
 }
