@@ -10,10 +10,6 @@ import (
 	"time"
 )
 
-/*
-TODO:
-- print out http_proxy and no_proxy
-*/
 type urlStatus struct {
 	URL        string `json: url`
 	StatusCode int    `json: statusCode`
@@ -92,10 +88,34 @@ func readFile(file string) []string {
 }
 
 func checkUrls(urls []string) []urlStatus {
+	pf := http.ProxyFromEnvironment
+
+	// Print proxy URL for debugging
+	req, _ := http.NewRequest("GET", urls[0], nil)
+	p, err := pf(req)
+	if err != nil {
+		log.Fatal("Could not obtain proxy URL from env", err)
+	}
+
+	if p != nil {
+		log.Println("Proxy used:", p)
+	} else {
+		log.Println("WARNING: Proxy URL not found.")
+	}
+
+	// Client using proxy from env
+	transport := http.Transport{Proxy: pf}
+	client := http.Client{
+		Timeout:   5 * time.Second,
+		Transport: &transport,
+	}
+
+	// Run URL checks
 	msgs := make(chan urlStatus)
 	for _, url := range urls {
-		go checkUrl(url, msgs)
+		go checkUrl(url, msgs, &client)
 	}
+
 	var results []urlStatus
 	for i := 0; i < len(urls); i++ {
 		results = append(results, <-msgs)
@@ -104,11 +124,9 @@ func checkUrls(urls []string) []urlStatus {
 	return results
 }
 
-func checkUrl(url string, msgs chan urlStatus) {
-	client := http.Client{
-		Timeout: 5 * time.Second,
-	}
-	res, err := client.Get(url)
+func checkUrl(url string, msgs chan urlStatus, client *http.Client) {
+	req, _ := http.NewRequest("GET", url, nil)
+	res, err := client.Do(req)
 	if err != nil {
 		fmt.Println(url + " F")
 		msgs <- urlStatus{url, 0, err}
